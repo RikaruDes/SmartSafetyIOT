@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT Sensor Dashboard</title>
+    <!-- 1. Include Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Include Inter font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* 3. Set Inter as the default font */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* Dark background */
+            color: #f3f4f6; /* Light text */
+        }
+        /* 4. Custom scrollbar for the table */
+        .table-container::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .table-container::-webkit-scrollbar-thumb {
+            background-color: #4b5563; /* gray-600 */
+            border-radius: 4px;
+        }
+        .table-container::-webkit-scrollbar-track {
+            background-color: #1f2937; /* gray-800 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen p-4 md:p-8">
+
+    <div class="container mx-auto max-w-7xl">
+        <header class="mb-8">
+            <h1 class="text-4xl font-bold text-white">IoT Sensor Dashboard</h1>
+            <p class="text-lg text-gray-400">Live data from your IoT device</p>
+        </header>
+
+        <!-- Status and Controls -->
+        <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <button id="refresh-button" class="px-5 py-2.5 bg-indigo-600 text-white font-medium rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition duration-150 ease-in-out">
+                    Refresh Data
+                </button>
+                <!-- Loading Spinner (hidden by default) -->
+                <div id="loading-spinner" class="hidden h-6 w-6 animate-spin rounded-full border-4 border-solid border-white border-t-transparent"></div>
+            </div>
+            <p class="text-sm text-gray-500" id="last-updated">Last updated: Never</p>
+        </div>
+
+        <!-- Error Message (hidden by default) -->
+        <div id="error-message" class="hidden mb-6 p-4 bg-red-800 border border-red-700 text-red-100 rounded-lg">
+            <strong>Error:</strong> <span id="error-text"></span>
+        </div>
+
+        <!-- Data Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Card 1: Latest Readings -->
+            <div class="lg:col-span-1 bg-gray-800 shadow-xl rounded-2xl p-6">
+                <h2 class="text-2xl font-semibold mb-4 text-white">Latest Readings</h2>
+                <div class="space-y-3">
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">RFID UID:</span>
+                        <span id="latest-rfid" class="font-mono text-indigo-300">---</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">Temperature:</span>
+                        <span id="latest-temp" class="font-medium text-white">-- °C</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">Humidity:</span>
+                        <span id="latest-humidity" class="font-medium text-white">-- %</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">Pressure:</span>
+                        <span id="latest-pressure" class="font-medium text-white">---</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">Gas (MQ135-1):</span>
+                        <span id="latest-mq1" class="font-medium text-white">---</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">Gas (MQ135-2):</span>
+                        <span id="latest-mq2" class="font-medium text-white">---</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 2: System Alerts -->
+            <div class="lg:col-span-2 bg-gray-800 shadow-xl rounded-2xl p-6">
+                <h2 class="text-2xl font-semibold mb-4 text-white">System Alerts</h2>
+                <div id="alerts-container" class="space-y-3">
+                    <div class="flex items-center gap-3 p-3 bg-green-800 text-green-100 rounded-lg">
+                        <svg class="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        <span class="font-medium">All systems normal.</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 3: Full Data Log -->
+            <div class="lg:col-span-3 bg-gray-800 shadow-xl rounded-2xl p-6">
+                <h2 class="text-2xl font-semibold mb-4 text-white">Data Log</h2>
+                <div class="table-container overflow-x-auto overflow-y-auto max-h-[500px] rounded-lg border border-gray-700">
+                    <table class="w-full min-w-[700px] text-left">
+                        <thead class="bg-gray-700 sticky top-0">
+                            <tr>
+                                <th class="p-3 font-semibold text-gray-300">Timestamp</th>
+                                <th class="p-3 font-semibold text-gray-300">RFID UID</th>
+                                <th class="p-3 font-semibold text-gray-300">Temp (°C)</th>
+                                <th class="p-3 font-semibold text-gray-300">Humidity (%)</th>
+                                <th class="p-3 font-semibold text-gray-300">Pressure</th>
+                                <th class="p-3 font-semibold text-gray-300">MQ-1</th>
+                                <th class="p-3 font-semibold text-gray-300">MQ-2</th>
+                            </tr>
+                        </thead>
+                        <tbody id="data-table-body" class="bg-gray-800 divide-y divide-gray-700">
+                            <!-- JS will populate this -->
+                            <tr>
+                                <td colspan="7" class="p-6 text-center text-gray-500">Loading data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========================================================================
+        // !! IMPORTANT !!
+        // PASTE YOUR *NEW* GOOGLE APPS SCRIPT "READER" WEB APP URL HERE
+        // (See README.md for instructions on how to get this)
+        // ========================================================================
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxQ1GBvZCyKXtqIYMU7jjmoQiAmcaIRZPWLFdlncfw9U3J4fXpA3rulDAMO_p4D2pCF/exec';
+
+        // --- Thresholds (from your Arduino code) ---
+        const TEMP_THRESHOLD = 35.0;
+        const HUMIDITY_THRESHOLD = 80.0;
+        const MQ135_1_THRESHOLD = 600;
+        const MQ135_2_THRESHOLD = 600;
+        const PRESSURE_THRESHOLD = 800;
+
+        // --- DOM Elements ---
+        const refreshButton = document.getElementById('refresh-button');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const errorMessage = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        const lastUpdated = document.getElementById('last-updated');
+        const tableBody = document.getElementById('data-table-body');
+        
+        // "Latest" card elements
+        const latestRfid = document.getElementById('latest-rfid');
+        const latestTemp = document.getElementById('latest-temp');
+        const latestHumidity = document.getElementById('latest-humidity');
+        const latestPressure = document.getElementById('latest-pressure');
+        const latestMq1 = document.getElementById('latest-mq1');
+        const latestMq2 = document.getElementById('latest-mq2');
+        const alertsContainer = document.getElementById('alerts-container');
+
+        // --- Functions ---
+
+        /**
+         * Fetches data from the Google Apps Script
+         */
+        async function fetchData() {
+            console.log('Fetching data...');
+            loadingSpinner.classList.remove('hidden');
+            errorMessage.classList.add('hidden');
+            refreshButton.disabled = true;
+
+            if (SCRIPT_URL.includes('PASTE_YOUR_NEW_READER_SCRIPT_URL_HERE')) {
+                showError('Please paste your Google Apps Script Web App URL into the SCRIPT_URL constant in index.html.');
+                loadingSpinner.classList.add('hidden');
+                refreshButton.disabled = false;
+                return;
+            }
+
+            try {
+                // Use 'no-cors' mode. The Apps Script will redirect, and we follow it.
+                // We wrap this in a proxy to bypass CORS issues for development.
+                // A better production solution is to handle the redirect properly,
+                // but for a simple dashboard, this often works with Apps Script.
+                const response = await fetch(SCRIPT_URL);
+
+                if (!response.ok) {
+                    throw new Error(`Network response was not ok (status: ${response.status})`);
+                }
+
+                const data = await response.json();
+                
+                if (data && data.length > 1) { // data.length > 1 to ensure there's more than just a header
+                    populateTable(data);
+                    updateLatest(data);
+                    lastUpdated.textContent = `Last updated: ${new Date().toLocaleString()}`;
+                } else {
+                    showError('No data found in sheet, or sheet is empty.');
+                    tableBody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-gray-500">No data found.</td></tr>`;
+                }
+
+            } catch (error) {
+                console.error('Fetch error:', error);
+                showError(`Failed to fetch data. ${error.message}. Check browser console and ensure Apps Script is deployed correctly with 'Anyone' access.`);
+            } finally {
+                loadingSpinner.classList.add('hidden');
+                refreshButton.disabled = false;
+            }
+        }
+
+        /**
+         * Populates the main data log table
+         * @param {Array<Array<any>>} data - Data from Google Sheet
+         */
+        function populateTable(data) {
+            tableBody.innerHTML = ''; // Clear existing data
+
+            // Loop in reverse to show newest first, skip header row
+            for (let i = data.length - 1; i > 0; i--) {
+                const row = data[i];
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-700 transition-colors duration-150';
+
+                // Format timestamp
+                const timestamp = new Date(row[0]).toLocaleString();
+                
+                // Column order from your Arduino code:
+                // timestamp_ms [0], rfid_uid [1], mq135_1 [2], mq135_2 [3], pressure [4], temp [5], humidity [6]
+                
+                tr.innerHTML = `
+                    <td class="p-3 text-sm text-gray-300">${timestamp}</td>
+                    <td class="p-3 font-mono text-indigo-300">${row[1] || 'N/A'}</td>
+                    <td class="p-3">${parseFloat(row[5]).toFixed(1)}</td>
+                    <td class="p-3">${parseFloat(row[6]).toFixed(1)}</td>
+                    <td class="p-3">${row[4]}</td>
+                    <td class="p-3">${row[2]}</td>
+                    <td class="p-3">${row[3]}</td>
+                `;
+                tableBody.appendChild(tr);
+            }
+        }
+
+        /**
+         * Updates the "Latest Readings" and "Alerts" cards
+         * @param {Array<Array<any>>} data - Data from Google Sheet
+         */
+        function updateLatest(data) {
+            const latest = data[data.length - 1]; // Get the last row (newest data)
+            
+            // Column order: [0]ts, [1]rfid, [2]mq1, [3]mq2, [4]pressure, [5]temp, [6]humidity
+            const rfid = latest[1] || '---';
+            const mq1 = parseInt(latest[2]);
+            const mq2 = parseInt(latest[3]);
+            const pressure = parseInt(latest[4]);
+            const temp = parseFloat(latest[5]);
+            const humidity = parseFloat(latest[6]);
+
+            // Update "Latest" card
+            latestRfid.textContent = rfid;
+            latestTemp.textContent = `${temp.toFixed(1)} °C`;
+            latestHumidity.textContent = `${humidity.toFixed(1)} %`;
+            latestPressure.textContent = pressure;
+            latestMq1.textContent = mq1;
+            latestMq2.textContent = mq2;
+
+            // Update "Alerts" card
+            updateAlerts(temp, humidity, mq1, mq2, pressure);
+        }
+
+        /**
+         * Checks values against thresholds and updates the Alerts card
+         */
+        function updateAlerts(temp, humidity, mq1, mq2, pressure) {
+            alertsContainer.innerHTML = ''; // Clear previous alerts
+            let hasAlert = false;
+
+            if (temp > TEMP_THRESHOLD) {
+                showAlert(`Temperature High: ${temp.toFixed(1)} °C (Threshold: ${TEMP_THRESHOLD}°C)`);
+                hasAlert = true;
+            }
+            if (humidity > HUMIDITY_THRESHOLD) {
+                showAlert(`Humidity High: ${humidity.toFixed(1)} % (Threshold: ${HUMIDITY_THRESHOLD}%)`);
+                hasAlert = true;
+            }
+            if (mq1 > MQ135_1_THRESHOLD) {
+                showAlert(`Gas MQ-1 High: ${mq1} (Threshold: ${MQ135_1_THRESHOLD})`);
+                hasAlert = true;
+            }
+            if (mq2 > MQ135_2_THRESHOLD) {
+                showAlert(`Gas MQ-2 High: ${mq2} (Threshold: ${MQ135_2_THRESHOLD})`);
+                hasAlert = true;
+            }
+            if (pressure > PRESSURE_THRESHOLD) {
+                showAlert(`Pressure High: ${pressure} (Threshold: ${PRESSURE_THRESHOLD})`);
+                hasAlert = true;
+            }
+
+            if (!hasAlert) {
+                alertsContainer.innerHTML = `
+                    <div class="flex items-center gap-3 p-3 bg-green-800 text-green-100 rounded-lg">
+                        <svg class="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        <span class="font-medium">All systems normal.</span>
+                    </div>`;
+            }
+        }
+
+        /**
+         * Helper to show an alert message in the UI
+         * @param {string} message - The alert text to display
+         */
+        function showAlert(message) {
+            alertsContainer.innerHTML += `
+                <div class="flex items-center gap-3 p-3 bg-red-800 text-red-100 rounded-lg">
+                    <svg class="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    <span class="font-medium">${message}</span>
+                </div>`;
+        }
+
+        /**
+         * Helper to show a global error message
+         * @param {string} message - The error text
+         */
+        function showError(message) {
+            errorMessage.classList.remove('hidden');
+            errorText.textContent = message;
+        }
+
+        // --- Event Listeners ---
+        refreshButton.addEventListener('click', fetchData);
+
+        // Fetch data on initial page load
+        document.addEventListener('DOMContentLoaded', () => {
+		fetchData();
+		setInterval(fetchData, 10000);
+	})
+    </script>
+</body>
+</html>
